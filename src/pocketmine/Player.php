@@ -31,6 +31,7 @@ use pocketmine\command\Command;
 use pocketmine\command\CommandSender;
 use pocketmine\entity\Attribute;
 use pocketmine\entity\Effect;
+use pocketmine\entity\EffectInstance;
 use pocketmine\entity\Entity;
 use pocketmine\entity\Human;
 use pocketmine\entity\Vehicle;
@@ -117,6 +118,7 @@ use pocketmine\network\mcpe\protocol\ContainerClosePacket;
 use pocketmine\network\mcpe\protocol\DataPacket;
 use pocketmine\network\mcpe\protocol\DisconnectPacket;
 use pocketmine\network\mcpe\protocol\EntityEventPacket;
+use pocketmine\network\mcpe\protocol\MobEffectPacket;
 use pocketmine\network\mcpe\protocol\ModalFormRequestPacket;
 use pocketmine\network\mcpe\protocol\MoveEntityPacket;
 use pocketmine\network\mcpe\protocol\PlayerInputPacket;
@@ -1743,6 +1745,27 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 		return $this->isCreative() or parent::canBreathe();
 	}
 
+    protected function sendEffectAdd(EffectInstance $effect, bool $replacesOldEffect) : void{
+        $pk = new MobEffectPacket();
+        $pk->entityRuntimeId = $this->getId();
+        $pk->eventId = $replacesOldEffect ? MobEffectPacket::EVENT_MODIFY : MobEffectPacket::EVENT_ADD;
+        $pk->effectId = $effect->getId();
+        $pk->amplifier = $effect->getAmplifier();
+        $pk->particles = $effect->isVisible();
+        $pk->duration = $effect->getDuration();
+
+        $this->dataPacket($pk);
+    }
+
+    protected function sendEffectRemove(EffectInstance $effect) : void{
+        $pk = new MobEffectPacket();
+        $pk->entityRuntimeId = $this->getId();
+        $pk->eventId = MobEffectPacket::EVENT_REMOVE;
+        $pk->effectId = $effect->getId();
+
+        $this->dataPacket($pk);
+    }
+
 	public function checkNetwork(){
 		if(!$this->isOnline()){
 			return;
@@ -1866,9 +1889,9 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 		}
 
 		if(
-			($this->isBanned() or $this->server->getIPBans()->isBanned($this->getAddress())) and
-			$this->kick("You are banned", false)
-		){
+		    ($this->isBanned() or $this->server->getIPBans()->isBanned($this->getAddress())) and
+            $this->kick("You are banned", false)
+        ){
 			return true;
 		}
 
@@ -1986,8 +2009,7 @@ class Player extends Human implements CommandSender, ChunkLoader, IPlayer{
 	public function handleResourcePackClientResponse(ResourcePackClientResponsePacket $packet) : bool{
 		switch($packet->status){
 			case ResourcePackClientResponsePacket::STATUS_REFUSED:
-				//TODO: add lang strings for this
-				$this->close("", "You must accept resource packs to join this server.", true);
+                $this->close("", $this->server->getLanguage()->translateString("pocketmine.disconnect.mustAcceptResourcePack"), true);
 				break;
 			case ResourcePackClientResponsePacket::STATUS_SEND_PACKS:
 				$manager = $this->server->getResourcePackManager();
